@@ -19,8 +19,23 @@ const EVOLUTION_CONFIG = {
 };
 
 // Configuración Claude
+// Configuración Claude (CORREGIDA)
 const claude = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY,
+  defaultHeaders: {
+    'anthropic-beta': 'projects-2024-07-15'
+  }
+});
+
+// Y en la función consultar Claude, agrega:
+const response = await claude.messages.create({
+  model: 'claude-3-haiku-20240307',
+  max_tokens: 300,
+  messages: [...],
+  // Agregar el project ID
+  extra_headers: {
+    'anthropic-project': process.env.CLAUDE_PROJECT_ID
+  }
 });
 
 // Función para limpiar número de teléfono
@@ -57,6 +72,7 @@ async function sendWhatsAppMessage(to, message) {
 }
 
 // Función para consultar Claude
+// Función para consultar Claude (VERSIÓN MEJORADA)
 async function consultarClaude(pregunta, numeroTelefono) {
   try {
     // Verificar que tenemos API key
@@ -68,20 +84,27 @@ async function consultarClaude(pregunta, numeroTelefono) {
     console.log('🤖 Consultando Claude para:', pregunta.substring(0, 50) + '...');
 
     const response = await claude.messages.create({
-      model: 'claude-3-haiku-20240307', // Modelo más estable
-      max_tokens: 250,
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 300, // Aumentado ligeramente
       messages: [
         {
           role: 'user',
-          content: `Eres el asistente virtual del edificio Armonie. Responde de manera amable, directa y concisa
+          content: `Eres el asistente virtual del EDIFICIO ARMONIE. Tu único propósito es ayudar con consultas sobre el manual de convivencia.
 
-CONSULTA: ${pregunta}
+REGLAS ESTRICTAS:
+- SOLO responde sobre temas del manual de convivencia del edificio Armonie
+- Si la pregunta NO está relacionada con el manual o el edificio, responde: "Solo puedo ayudarte con consultas sobre el manual de convivencia del edificio Armonie. Para otras consultas, contacta a la administración."
+- NO inventes información que no esté en el manual
+- Si no tienes la información específica, di: "No encuentro esa información específica en el manual. Te sugiero contactar a la administración del edificio."
+- Mantén respuestas cortas y directas (máximo 3 líneas)
+- Usa un tono amable y profesional
 
-Respuesta breve y útil:`
-    }
-  ]
-});
+PREGUNTA DEL VECINO: ${pregunta}
 
+RESPUESTA (solo sobre manual de convivencia):`
+        }
+      ]
+    });
 
     const respuesta = response.content[0].text;
     console.log('✅ Respuesta de Claude generada exitosamente');
