@@ -267,3 +267,23 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
+// Endpoint temporal para probar Claude desde navegador
+app.get('/test-claude-get', async (req, res) => {
+  try {
+    console.log('🧪 Probando Claude desde navegador...');
+    const respuesta = await consultarClaude('Hola, ¿cómo estás?', 'test');
+    res.json({ 
+      success: true, 
+      respuesta,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('🧪 Error en prueba:', error);
+    res.status(500).json({ 
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
