@@ -91,12 +91,6 @@ Respuesta breve y útil:`
   ]
 });
 
-CONSULTA DEL VECINO: ${pregunta}
-
-Responde breve y util:`
-        }
-      ]
-    });
 
     const respuesta = response.content[0].text;
     console.log('✅ Respuesta de Claude generada exitosamente');
