@@ -83,7 +83,7 @@ app.post('/webhook', async (req, res) => {
     const { data } = req.body;
     
     // Verificar que es un mensaje de texto entrante
-    if (data && data.messageType === 'textMessage' && !data.fromMe) {
+    if (data && (data.messageType === 'conversation' || data.messageType === 'textMessage') && !data.key.fromMe) {
       const numeroTelefono = data.key.remoteJid;
       const mensaje = data.message.conversation || data.message.extendedTextMessage?.text;
       
