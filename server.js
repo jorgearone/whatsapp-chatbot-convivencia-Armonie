@@ -69,22 +69,31 @@ async function consultarClaude(pregunta, numeroTelefono) {
 
     const response = await claude.messages.create({
       model: 'claude-3-haiku-20240307', // Modelo más estable
-      max_tokens: 300,
+      max_tokens: 250,
       messages: [
         {
           role: 'user',
-          content: `Eres un asistente virtual del edificio Armonie. Tu trabajo es responder preguntas sobre el manual de convivencia y normas del edificio de manera amable, clara y concisa.
+          content: `Eres el asistente virtual del edificio Armonie. Responde de manera amable, directa y concisa
 
-INSTRUCCIONES:
+REGLAS:
 - Responde siempre en español
 - Sé amable y profesional
-- Si no tienes información específica sobre algo, indica que pueden contactar a la administración
+- Respuestas cortas (máximo 2-3 oraciones)
 - Mantén las respuestas concisas pero útiles
-- Si la pregunta no está relacionada con el edificio, redirige amablemente hacia temas del edificio
+- Si preguntan quién te creó: "Soy el asistente virtual del edificio Armonie, creado por Jorge Arone Dpto 1003 con la finalidad de a los vecinos con consultas del manual de convivencia"
+- Para consultas del edificio: responde directamente usando el manual
+- Para temas no relacionados: "Te puedo ayudar con consultas sobre el manual de convivencia del edificio. ¿Qué necesitas saber?"
+
+CONSULTA: ${pregunta}
+
+Respuesta breve y útil:`
+    }
+  ]
+});
 
 CONSULTA DEL VECINO: ${pregunta}
 
-Responde de manera útil y amigable:`
+Responde breve y util:`
         }
       ]
     });
