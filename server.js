@@ -18,29 +18,13 @@ const EVOLUTION_CONFIG = {
   instanceName: 'Hongo'
 };
 
-// Configuración Claude
-// Configuración Claude (CORREGIDA)
+// Configuración Claude CORREGIDA
 const claude = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY,
-  defaultHeaders: {
-    'anthropic-beta': 'projects-2024-07-15'
-  }
-});
-
-// Y en la función consultar Claude, agrega:
-const response = await claude.messages.create({
-  model: 'claude-3-haiku-20240307',
-  max_tokens: 300,
-  messages: [...],
-  // Agregar el project ID
-  extra_headers: {
-    'anthropic-project': process.env.CLAUDE_PROJECT_ID
-  }
+  apiKey: process.env.CLAUDE_API_KEY
 });
 
 // Función para limpiar número de teléfono
 function cleanPhoneNumber(number) {
-  // Remover @s.whatsapp.net si existe
   return number.replace('@s.whatsapp.net', '');
 }
 
@@ -71,11 +55,9 @@ async function sendWhatsAppMessage(to, message) {
   }
 }
 
-// Función para consultar Claude
-// Función para consultar Claude (VERSIÓN MEJORADA)
+// Función para consultar Claude MEJORADA
 async function consultarClaude(pregunta, numeroTelefono) {
   try {
-    // Verificar que tenemos API key
     if (!process.env.CLAUDE_API_KEY) {
       console.error('❌ CLAUDE_API_KEY no está configurada');
       return 'Lo siento, hay un problema de configuración. Por favor contacta a la administración del edificio.';
@@ -84,8 +66,8 @@ async function consultarClaude(pregunta, numeroTelefono) {
     console.log('🤖 Consultando Claude para:', pregunta.substring(0, 50) + '...');
 
     const response = await claude.messages.create({
-      model: 'claude-3-haiku-20240307',
-      max_tokens: 300, // Aumentado ligeramente
+      model: 'claude-3-5-sonnet-20241022', // Modelo actualizado
+      max_tokens: 500, // Aumentado para respuestas más completas
       messages: [
         {
           role: 'user',
@@ -94,16 +76,21 @@ async function consultarClaude(pregunta, numeroTelefono) {
 REGLAS ESTRICTAS:
 - SOLO responde sobre temas del manual de convivencia del edificio Armonie
 - Si la pregunta NO está relacionada con el manual o el edificio, responde: "Solo puedo ayudarte con consultas sobre el manual de convivencia del edificio Armonie. Para otras consultas, contacta a la administración."
-- NO inventes información que no esté en el manual
+- Usa información específica del manual adjunto en este proyecto
 - Si no tienes la información específica, di: "No encuentro esa información específica en el manual. Te sugiero contactar a la administración del edificio."
-- Mantén respuestas cortas y directas (máximo 3 líneas)
+- Mantén respuestas claras y útiles (máximo 4 líneas para WhatsApp)
 - Usa un tono amable y profesional
+- Si mencionas horarios, reglas o procedimientos, sé específico
 
 PREGUNTA DEL VECINO: ${pregunta}
 
-RESPUESTA (solo sobre manual de convivencia):`
+RESPUESTA (basada en el manual de convivencia del Edificio Armonie):`
         }
-      ]
+      ],
+      // Configuración correcta para Claude Projects
+      ...(process.env.CLAUDE_PROJECT_ID && {
+        system: "Usa la base de conocimiento del manual de convivencia adjunto en este proyecto para responder las consultas de los vecinos del Edificio Armonie."
+      })
     });
 
     const respuesta = response.content[0].text;
@@ -117,40 +104,61 @@ RESPUESTA (solo sobre manual de convivencia):`
       return 'Lo siento, hay un problema de autenticación con el sistema. Por favor contacta a la administración del edificio.';
     } else if (error.status === 429) {
       return 'El sistema está temporalmente sobrecargado. Por favor intenta nuevamente en unos minutos.';
+    } else if (error.status === 400) {
+      return 'Error en la consulta. Por favor reformula tu pregunta o contacta a la administración.';
     } else {
       return 'Lo siento, hay un problema técnico temporal. Por favor contacta a la administración del edificio o intenta nuevamente más tarde.';
     }
   }
 }
 
-// Función para validar mensaje entrante
+// Función para validar mensaje entrante MEJORADA
 function esMensajeValido(data) {
-  return data && 
-         (data.messageType === 'conversation' || data.messageType === 'textMessage') && 
-         !data.key.fromMe && 
-         data.message && 
-         (data.message.conversation || data.message.extendedTextMessage?.text);
+  if (!data || !data.key || data.key.fromMe) return false;
+  
+  const tiposValidos = ['conversation', 'textMessage', 'extendedTextMessage'];
+  const tieneTexto = data.message && 
+                   (data.message.conversation || 
+                    data.message.textMessage?.text || 
+                    data.message.extendedTextMessage?.text);
+  
+  return tiposValidos.includes(data.messageType) && tieneTexto;
 }
 
-// Webhook para recibir mensajes de WhatsApp
+// Función para extraer texto del mensaje
+function extraerTextoMensaje(data) {
+  if (data.message.conversation) {
+    return data.message.conversation;
+  } else if (data.message.textMessage?.text) {
+    return data.message.textMessage.text;
+  } else if (data.message.extendedTextMessage?.text) {
+    return data.message.extendedTextMessage.text;
+  }
+  return '';
+}
+
+// Webhook para recibir mensajes de WhatsApp MEJORADO
 app.post('/webhook', async (req, res) => {
   try {
     console.log('📨 Webhook recibido en:', new Date().toISOString());
-    console.log('📋 Datos del webhook:', JSON.stringify(req.body, null, 2));
+    
+    // Log simplificado para producción
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📋 Datos del webhook:', JSON.stringify(req.body, null, 2));
+    }
 
     const { data } = req.body;
     
-    // Verificar que es un mensaje válido
     if (!esMensajeValido(data)) {
-      console.log('⏭️ Mensaje ignorado (no es texto entrante)');
+      console.log('⏭️ Mensaje ignorado (no es texto entrante válido)');
       return res.status(200).json({ success: true, message: 'Mensaje ignorado' });
     }
 
     const numeroTelefono = data.key.remoteJid;
-    const mensaje = data.message.conversation || data.message.extendedTextMessage?.text;
+    const mensaje = extraerTextoMensaje(data);
     const nombreUsuario = data.pushName || 'Usuario';
     
-    console.log(`📞 Mensaje de ${nombreUsuario} (${numeroTelefono}): ${mensaje}`);
+    console.log(`📞 Mensaje de ${nombreUsuario} (${numeroTelefono.substring(0, 10)}...): ${mensaje.substring(0, 50)}...`);
     
     // Consultar Claude
     const respuesta = await consultarClaude(mensaje, numeroTelefono);
@@ -184,7 +192,8 @@ app.get('/health', (req, res) => {
     config: {
       evolutionAPI: EVOLUTION_CONFIG.baseURL,
       instance: EVOLUTION_CONFIG.instanceName,
-      claudeConfigured: !!process.env.CLAUDE_API_KEY
+      claudeConfigured: !!process.env.CLAUDE_API_KEY,
+      claudeProjectConfigured: !!process.env.CLAUDE_PROJECT_ID
     }
   });
 });
@@ -244,13 +253,36 @@ app.get('/config', (req, res) => {
     },
     claude: {
       hasApiKey: !!process.env.CLAUDE_API_KEY,
-      hasProjectId: !!process.env.CLAUDE_PROJECT_ID
+      hasProjectId: !!process.env.CLAUDE_PROJECT_ID,
+      model: 'claude-3-5-sonnet-20241022'
     },
     server: {
       port: PORT,
       nodeEnv: process.env.NODE_ENV || 'development'
     }
   });
+});
+
+// Endpoint de prueba GET para Claude
+app.get('/test-claude-simple', async (req, res) => {
+  try {
+    const testMessage = req.query.message || '¿Cuáles son los horarios de silencio en el edificio?';
+    console.log('🧪 Probando Claude con mensaje:', testMessage);
+    
+    const respuesta = await consultarClaude(testMessage, 'test');
+    res.json({ 
+      success: true, 
+      pregunta: testMessage,
+      respuesta,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('🧪 Error en prueba:', error);
+    res.status(500).json({ 
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Manejo de errores global
@@ -265,18 +297,20 @@ app.use((error, req, res, next) => {
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log('🚀 ================================');
-  console.log(`🚀 Servidor Chatbot Armonie iniciado`);
+  console.log(`🚀 Chatbot Armonie - Manual de Convivencia`);
   console.log(`🚀 Puerto: ${PORT}`);
   console.log(`🚀 Timestamp: ${new Date().toISOString()}`);
   console.log('🚀 ================================');
   console.log(`📱 Evolution API: ${EVOLUTION_CONFIG.baseURL}`);
   console.log(`🤖 Instancia WhatsApp: ${EVOLUTION_CONFIG.instanceName}`);
-  console.log(`🔑 Claude API configurada: ${!!process.env.CLAUDE_API_KEY ? 'SÍ' : 'NO'}`);
+  console.log(`🔑 Claude API: ${!!process.env.CLAUDE_API_KEY ? '✅ Configurada' : '❌ Falta configurar'}`);
+  console.log(`📋 Claude Project: ${!!process.env.CLAUDE_PROJECT_ID ? '✅ Configurado' : '❌ Falta configurar'}`);
   console.log('🚀 ================================');
   console.log('✅ Chatbot listo para recibir mensajes');
   console.log('🔗 Endpoints disponibles:');
   console.log(`   GET  /health - Estado del sistema`);
   console.log(`   GET  /config - Configuración actual`);
+  console.log(`   GET  /test-claude-simple?message=tu_pregunta - Probar Claude rápido`);
   console.log(`   POST /webhook - Webhook de WhatsApp`);
   console.log(`   POST /test-claude - Probar Claude`);
   console.log(`   POST /test-whatsapp - Probar WhatsApp`);
@@ -284,23 +318,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
-// Endpoint temporal para probar Claude desde navegador
-app.get('/test-claude-get', async (req, res) => {
-  try {
-    console.log('🧪 Probando Claude desde navegador...');
-    const respuesta = await consultarClaude('Hola, ¿cómo estás?', 'test');
-    res.json({ 
-      success: true, 
-      respuesta,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('🧪 Error en prueba:', error);
-    res.status(500).json({ 
-      error: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
