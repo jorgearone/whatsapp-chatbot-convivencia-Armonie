@@ -55,6 +55,207 @@ async function sendWhatsAppMessage(to, message) {
   }
 }
 
+// Añade esta función de diagnóstico ANTES de la función consultarClaude
+
+// FUNCIÓN DE DIAGNÓSTICO - TEMPORAL PARA DEBUGGEAR
+async function diagnosticarProyecto() {
+  try {
+    console.log('🔍 === DIAGNÓSTICO DEL PROYECTO ===');
+    console.log('📋 CLAUDE_PROJECT_ID:', process.env.CLAUDE_PROJECT_ID);
+    console.log('🔑 CLAUDE_API_KEY:', process.env.CLAUDE_API_KEY ? 'Configurada ✅' : 'NO configurada ❌');
+    
+    // Probar acceso al proyecto
+    const testResponse = await claude.beta.projects.messages.create(
+      process.env.CLAUDE_PROJECT_ID,
+      {
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 100,
+        system: 'Responde únicamente basándote en la base de conocimiento adjunta a este proyecto.',
+        messages: [
+          {
+            role: 'user',
+            content: 'Dime algo específico que esté en la base de conocimiento de este proyecto sobre el manual de convivencia.'
+          }
+        ]
+      }
+    );
+    
+    console.log('✅ Proyecto accesible');
+    console.log('📝 Respuesta de prueba:', testResponse.content[0].text.substring(0, 100) + '...');
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Error accediendo al proyecto:', error.message);
+    console.error('📊 Status:', error.status);
+    console.error('🔢 Código:', error.code);
+    return false;
+  }
+}
+
+// FUNCIÓN CONSULTARCLAUDE MODIFICADA CON LOGS DETALLADOS
+async function consultarClaude(pregunta, numeroTelefono) {
+  try {
+    console.log('🔍 === CONSULTA CLAUDE DEBUG ===');
+    console.log('❓ Pregunta:', pregunta);
+    console.log('📱 Número:', numeroTelefono);
+    
+    if (!process.env.CLAUDE_API_KEY) {
+      console.error('❌ CLAUDE_API_KEY no está configurada');
+      return 'Lo siento, hay un problema de configuración. Por favor contacta a la administración del edificio.';
+    }
+
+    if (!process.env.CLAUDE_PROJECT_ID) {
+      console.error('❌ CLAUDE_PROJECT_ID no está configurada');
+      return 'Lo siento, hay un problema de configuración del proyecto. Por favor contacta a la administración del edificio.';
+    }
+
+    console.log('🎯 Intentando usar Projects API...');
+    console.log('📋 Project ID:', process.env.CLAUDE_PROJECT_ID);
+
+    // INTENTAR PROJECTS API PRIMERO
+    try {
+      const response = await claude.beta.projects.messages.create(
+        process.env.CLAUDE_PROJECT_ID,
+        {
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 500,
+          system: `Eres el asistente virtual del EDIFICIO ARMONIE.
+
+INSTRUCCIONES CRÍTICAS:
+- Usa ÚNICAMENTE la información de la base de conocimiento adjunta en este proyecto
+- Esta base de conocimiento contiene el manual de convivencia del Edificio Armonie
+- Si la información está en la base de conocimiento, cítala exactamente
+- Si NO está en la base de conocimiento, di claramente: "No encuentro esa información en el manual"
+- NUNCA inventes horarios, reglas o información
+- Para debugging: Menciona si encontraste la información en la base de conocimiento
+
+PREGUNTA: ${pregunta}`,
+          
+          messages: [
+            {
+              role: 'user',
+              content: `Consulta sobre el manual de convivencia del Edificio Armonie: ${pregunta}
+
+Por favor, indica si encontraste esta información en la base de conocimiento del proyecto.`
+            }
+          ]
+        }
+      );
+
+      const respuesta = response.content[0].text;
+      console.log('✅ PROJECTS API EXITOSA');
+      console.log('📝 Respuesta completa:', respuesta);
+      console.log('🔍 === FIN DEBUG ===');
+      return respuesta;
+
+    } catch (projectError) {
+      console.error('❌ Projects API falló:', projectError.message);
+      console.error('📊 Status:', projectError.status);
+      
+      // FALLBACK A API REGULAR
+      console.log('🔄 Intentando API regular como fallback...');
+      
+      const response = await claude.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 500,
+        system: `[MODO FALLBACK] Eres el asistente del Edificio Armonie. La conexión al proyecto falló, así que responde de forma general sobre manuales de convivencia.`,
+        messages: [
+          {
+            role: 'user',
+            content: pregunta
+          }
+        ]
+      });
+
+      const respuesta = `[MODO FALLBACK - SIN BASE DE CONOCIMIENTO] ${response.content[0].text}`;
+      console.log('⚠️ USANDO FALLBACK');
+      console.log('📝 Respuesta fallback:', respuesta);
+      console.log('🔍 === FIN DEBUG ===');
+      return respuesta;
+    }
+
+  } catch (error) {
+    console.error('💥 Error general:', error.message);
+    return 'Lo siento, hay un problema técnico temporal. Por favor contacta a la administración del edificio.';
+  }
+}
+
+// ENDPOINT ESPECÍFICO PARA DIAGNÓSTICO
+app.get('/diagnostico', async (req, res) => {
+  try {
+    console.log('🩺 Iniciando diagnóstico completo...');
+    
+    const diagnostico = {
+      timestamp: new Date().toISOString(),
+      configuracion: {
+        claudeApiKey: !!process.env.CLAUDE_API_KEY,
+        claudeProjectId: !!process.env.CLAUDE_PROJECT_ID,
+        projectIdValue: process.env.CLAUDE_PROJECT_ID
+      },
+      pruebaProyecto: null,
+      pruebaConsulta: null
+    };
+    
+    // Probar acceso al proyecto
+    diagnostico.pruebaProyecto = await diagnosticarProyecto();
+    
+    // Probar consulta específica
+    const respuestaPrueba = await consultarClaude('¿A qué hora se bota la basura?', 'diagnostico');
+    diagnostico.pruebaConsulta = {
+      pregunta: '¿A qué hora se bota la basura?',
+      respuesta: respuestaPrueba,
+      contieneProjects: respuestaPrueba.includes('[MODO FALLBACK]') ? false : true
+    };
+    
+    res.json(diagnostico);
+    
+  } catch (error) {
+    res.status(500).json({
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ENDPOINT PARA COMPARAR CON BASE DE CONOCIMIENTO
+app.get('/comparar-conocimiento', async (req, res) => {
+  try {
+    const pregunta = req.query.message || '¿Qué contiene la base de conocimiento de este proyecto?';
+    
+    console.log('🔍 Comparando acceso a base de conocimiento...');
+    
+    // Intentar acceso directo al proyecto
+    const respuestaProyecto = await claude.beta.projects.messages.create(
+      process.env.CLAUDE_PROJECT_ID,
+      {
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 300,
+        system: 'Lista los temas principales que encuentras en la base de conocimiento adjunta a este proyecto.',
+        messages: [
+          {
+            role: 'user',
+            content: 'Enumera los principales temas o secciones que encuentras en la base de conocimiento de este proyecto.'
+          }
+        ]
+      }
+    );
+    
+    res.json({
+      success: true,
+      pregunta,
+      baseConocimiento: respuestaProyecto.content[0].text,
+      timestamp: new Date().toISOString(),
+      projectId: process.env.CLAUDE_PROJECT_ID
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      error: error.message,
+      details: error.status,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 // Función para consultar Claude PROJECT - VERSIÓN CORREGIDA
 async function consultarClaude(pregunta, numeroTelefono) {
   try {
