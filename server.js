@@ -75,7 +75,7 @@ async function consultarClaude(pregunta, numeroTelefono) {
       process.env.CLAUDE_PROJECT_ID,  // ID del proyecto donde está el manual
       {
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 500,
+        max_tokens: 1000,
         system: `Eres el asistente virtual del EDIFICIO ARMONIE.
 
 INSTRUCCIONES IMPORTANTES:
