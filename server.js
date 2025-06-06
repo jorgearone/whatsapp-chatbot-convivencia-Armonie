@@ -66,7 +66,7 @@ async function consultarClaude(pregunta, numeroTelefono) {
     console.log('🤖 Consultando Claude para:', pregunta.substring(0, 50) + '...');
 
     const response = await claude.messages.create({
-      model: 'claude-3-7-sonnet-20250219', // Modelo actualizado
+      model: 'claude-sonnet-4-20250514', // Modelo actualizado
       max_tokens: 500, // Aumentado para respuestas más completas
       messages: [
         {
