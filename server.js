@@ -18,7 +18,7 @@ const EVOLUTION_CONFIG = {
   instanceName: 'Hongo'
 };
 
-// Configuración Claude CORREGIDA
+// Configuración Claude CORREGIDA PARA PROJECTS
 const claude = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY
 });
@@ -55,7 +55,7 @@ async function sendWhatsAppMessage(to, message) {
   }
 }
 
-// Función para consultar Claude MEJORADA
+// Función para consultar Claude PROJECT - VERSIÓN CORREGIDA
 async function consultarClaude(pregunta, numeroTelefono) {
   try {
     if (!process.env.CLAUDE_API_KEY) {
@@ -63,56 +63,88 @@ async function consultarClaude(pregunta, numeroTelefono) {
       return 'Lo siento, hay un problema de configuración. Por favor contacta a la administración del edificio.';
     }
 
-    console.log('🤖 Consultando Claude para:', pregunta.substring(0, 50) + '...');
+    if (!process.env.CLAUDE_PROJECT_ID) {
+      console.error('❌ CLAUDE_PROJECT_ID no está configurada');
+      return 'Lo siento, hay un problema de configuración del proyecto. Por favor contacta a la administración del edificio.';
+    }
 
-    const response = await claude.messages.create({
-      model: 'claude-3-5-sonnet-20240620', // Modelo actualizado
-      max_tokens: 500, // Aumentado para respuestas más completas
-      messages: [
-        {
-          role: 'user',
-          content: `Eres el asistente virtual del EDIFICIO ARMONIE. Tu único propósito es ayudar con consultas sobre el manual de convivencia.
+    console.log('🤖 Consultando Claude Project para:', pregunta.substring(0, 50) + '...');
 
-REGLAS ESTRICTAS:
-- SOLO responde sobre temas del manual de convivencia del edificio Armonie
-- Si la pregunta NO está relacionada con el manual o el edificio, responde: "Solo puedo ayudarte con consultas sobre el manual de convivencia del edificio Armonie. Para otras consultas, contacta a la administración."
-- Usa información específica del manual adjunto en este proyecto
-- Si no tienes la información específica, di: "No encuentro esa información específica en el manual. Te sugiero contactar a la administración del edificio."
-- Mantén respuestas claras y útiles (máximo 4 líneas para WhatsApp)
+    // CONFIGURACIÓN CORRECTA PARA ACCEDER AL CLAUDE PROJECT
+    const response = await claude.beta.projects.messages.create(
+      process.env.CLAUDE_PROJECT_ID,  // ID del proyecto donde está el manual
+      {
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 500,
+        system: `Eres el asistente virtual del EDIFICIO ARMONIE.
+
+INSTRUCCIONES IMPORTANTES:
+- Usa ÚNICAMENTE la información de la base de conocimiento adjunta en este proyecto (manual de convivencia del Edificio Armonie)
+- SOLO responde preguntas relacionadas con el manual de convivencia del edificio
+- Si la pregunta no está relacionada con el manual, responde: "Solo puedo ayudarte with consultas sobre el manual de convivencia del edificio Armonie. Para otras consultas, contacta a la administración."
+- Si no encuentras información específica en el manual, di: "No encuentro esa información específica en el manual. Te sugiero contactar a la administración del edificio."
+- Cita información EXACTA del manual - no inventes horarios, reglas o procedimientos
+- Mantén respuestas claras para WhatsApp (máximo 4 líneas)
 - Usa un tono amable y profesional
-- Si mencionas horarios, reglas o procedimientos, sé específico
 
-PREGUNTA DEL VECINO: ${pregunta}
-
-RESPUESTA (basada en el manual de convivencia del Edificio Armonie):`
-        }
-      ],
-      // Configuración correcta para Claude Projects
-      ...(process.env.CLAUDE_PROJECT_ID && {
-        system: "Usa la base de conocimiento del manual de convivencia adjunto en este proyecto para responder las consultas de los vecinos del Edificio Armonie."
-      })
-    });
+NUNCA inventes información que no esté en la base de conocimiento del proyecto.`,
+        
+        messages: [
+          {
+            role: 'user',
+            content: pregunta
+          }
+        ]
+      }
+    );
 
     const respuesta = response.content[0].text;
-    console.log('✅ Respuesta de Claude generada exitosamente');
+    console.log('✅ Respuesta de Claude Project generada exitosamente');
     return respuesta;
 
   } catch (error) {
-    console.error('❌ Error consultando Claude:', error.message);
+    console.error('❌ Error consultando Claude Project:', error.message);
     
+    // Manejo específico de errores de Projects API
     if (error.status === 401) {
       return 'Lo siento, hay un problema de autenticación con el sistema. Por favor contacta a la administración del edificio.';
+    } else if (error.status === 404) {
+      return 'Error: No se pudo acceder al manual de convivencia. Contacta a la administración del edificio.';
     } else if (error.status === 429) {
       return 'El sistema está temporalmente sobrecargado. Por favor intenta nuevamente en unos minutos.';
     } else if (error.status === 400) {
       return 'Error en la consulta. Por favor reformula tu pregunta o contacta a la administración.';
     } else {
-      return 'Lo siento, hay un problema técnico temporal. Por favor contacta a la administración del edificio o intenta nuevamente más tarde.';
+      // Si falla Projects API, intentar método regular como fallback
+      console.log('🔄 Intentando método regular como fallback...');
+      return await consultarClaudeRegular(pregunta, numeroTelefono);
     }
   }
 }
 
-// Función para validar mensaje entrante MEJORADA
+// Función de fallback usando método regular (por si Projects API falla)
+async function consultarClaudeRegular(pregunta, numeroTelefono) {
+  try {
+    const response = await claude.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 500,
+      system: `Eres el asistente virtual del EDIFICIO ARMONIE. Usa la información del manual de convivencia adjunto en este proyecto para responder consultas de los vecinos. Solo responde sobre temas del manual de convivencia. Mantén respuestas claras para WhatsApp (máximo 4 líneas).`,
+      messages: [
+        {
+          role: 'user',
+          content: `PREGUNTA SOBRE EL MANUAL DE CONVIVENCIA DEL EDIFICIO ARMONIE: ${pregunta}`
+        }
+      ]
+    });
+
+    return response.content[0].text;
+  } catch (error) {
+    console.error('❌ Error en fallback:', error.message);
+    return 'Lo siento, hay un problema técnico temporal. Por favor contacta a la administración del edificio o intenta nuevamente más tarde.';
+  }
+}
+
+// Función para validar mensaje entrante
 function esMensajeValido(data) {
   if (!data || !data.key || data.key.fromMe) return false;
   
@@ -137,7 +169,7 @@ function extraerTextoMensaje(data) {
   return '';
 }
 
-// Webhook para recibir mensajes de WhatsApp MEJORADO
+// Webhook para recibir mensajes de WhatsApp
 app.post('/webhook', async (req, res) => {
   try {
     console.log('📨 Webhook recibido en:', new Date().toISOString());
@@ -160,7 +192,7 @@ app.post('/webhook', async (req, res) => {
     
     console.log(`📞 Mensaje de ${nombreUsuario} (${numeroTelefono.substring(0, 10)}...): ${mensaje.substring(0, 50)}...`);
     
-    // Consultar Claude
+    // Consultar Claude Project
     const respuesta = await consultarClaude(mensaje, numeroTelefono);
     
     // Enviar respuesta via WhatsApp
@@ -198,7 +230,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Endpoint para probar Claude
+// Endpoint para probar Claude Project
 app.post('/test-claude', async (req, res) => {
   try {
     const { message } = req.body;
@@ -210,7 +242,8 @@ app.post('/test-claude', async (req, res) => {
     res.json({ 
       success: true, 
       respuesta,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      usingProjectAPI: true
     });
   } catch (error) {
     res.status(500).json({ 
@@ -254,7 +287,8 @@ app.get('/config', (req, res) => {
     claude: {
       hasApiKey: !!process.env.CLAUDE_API_KEY,
       hasProjectId: !!process.env.CLAUDE_PROJECT_ID,
-      model: 'claude-3-5-sonnet-20241022'
+      model: 'claude-3-5-sonnet-20241022',
+      usingProjectsAPI: true
     },
     server: {
       port: PORT,
@@ -263,18 +297,19 @@ app.get('/config', (req, res) => {
   });
 });
 
-// Endpoint de prueba GET para Claude
+// Endpoint de prueba GET para Claude Project
 app.get('/test-claude-simple', async (req, res) => {
   try {
     const testMessage = req.query.message || '¿Cuáles son los horarios de silencio en el edificio?';
-    console.log('🧪 Probando Claude con mensaje:', testMessage);
+    console.log('🧪 Probando Claude Project con mensaje:', testMessage);
     
     const respuesta = await consultarClaude(testMessage, 'test');
     res.json({ 
       success: true, 
       pregunta: testMessage,
       respuesta,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      usingProjectAPI: true
     });
   } catch (error) {
     console.error('🧪 Error en prueba:', error);
@@ -310,9 +345,9 @@ app.listen(PORT, () => {
   console.log('🔗 Endpoints disponibles:');
   console.log(`   GET  /health - Estado del sistema`);
   console.log(`   GET  /config - Configuración actual`);
-  console.log(`   GET  /test-claude-simple?message=tu_pregunta - Probar Claude rápido`);
+  console.log(`   GET  /test-claude-simple?message=tu_pregunta - Probar Claude Project`);
   console.log(`   POST /webhook - Webhook de WhatsApp`);
-  console.log(`   POST /test-claude - Probar Claude`);
+  console.log(`   POST /test-claude - Probar Claude Project`);
   console.log(`   POST /test-whatsapp - Probar WhatsApp`);
   console.log('🚀 ================================');
 });
